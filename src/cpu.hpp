@@ -19,6 +19,15 @@ enum Funct3_ALU {
     F3_XOR     = 0x4,
     F3_AND     = 0x7
 };
+enum Funct3_CMP
+{
+    F3_EQUAL = 0x0,
+    F3_NOTEQUAL = 0x1,
+    F3_LESSTHAN = 0x4,
+    F3_EQUALORMORE = 0x5,
+    F3_LESSTHAN_U = 0x6, //U funct3's zero extend.
+    F3_EQUALORMORE_U = 0x7,
+};
 enum class OpcodeTypes:uint8_t
 {
     OP_REG = 0x33, //0110011 operations that take in 2 registers and output to a register
@@ -43,7 +52,8 @@ private:
 public:
     OpcodeTypes getOpcode() const { return static_cast<OpcodeTypes>(opcode); }
     uint8_t getRd() const {return (rd);}
-    Funct3_ALU getFunct3() const {return static_cast<Funct3_ALU>(funct3);}
+    Funct3_ALU getFunct3_ALU() const {return static_cast<Funct3_ALU>(funct3);}
+    Funct3_CMP getFunct3_CMP() const {return static_cast<Funct3_CMP>(funct3);}
     uint8_t getRS1()    const { return rs1; }
     uint8_t getRS2() const {return rs2;}
     uint8_t getFunct7() const {return funct7;}
@@ -177,6 +187,22 @@ private:
     Memory* memory;
     bool is_running = true;
 public:
+    inline uint32_t getregisterU(uint8_t r)
+    {
+        if (r == 0)
+        {
+            return 0;
+        }
+        return registers[r];
+    }
+    int32_t getregisterS(uint8_t r)
+    {
+        return cast::s32(getregisterU(r));
+    }
+    void setregister(uint8_t r, uint32_t value)
+    {
+        registers[r] = value;
+    }
     void PrintState(){
         std::cout << " | pc: " << pc << " | sp: " << sp;
         /*for (size_t i = 0; i <= 31; i++)
@@ -205,7 +231,7 @@ public:
     }
     inline void RTypesExecute(Instruction instruction)
     {
-        switch (instruction.getFunct3())
+        switch (instruction.getFunct3_ALU())
         {
         case Funct3_ALU::F3_ADD_SUB: //addi
         {
@@ -228,7 +254,7 @@ public:
     }
     inline void ITypesExecute(Instruction instruction)
     {
-        switch (instruction.getFunct3())
+        switch (instruction.getFunct3_ALU())
         {
         case Funct3_ALU::F3_ADD_SUB: //addi
         {
@@ -254,6 +280,52 @@ public:
             break;
         }
     }
+    inline void BTypesExecute(Instruction instruction)
+    {
+        switch (instruction.getFunct3_CMP())
+        {
+        case Funct3_CMP::F3_EQUAL:
+            if (getregisterS(instruction.getRS1()) == getregisterS(instruction.getRS2()))
+            {
+                pc += instruction.getImm();
+            }
+            
+            break;
+        case Funct3_CMP::F3_NOTEQUAL:
+            if (getregisterS(instruction.getRS1())  !=  getregisterS(instruction.getRS2()))
+            {
+                pc += instruction.getImm();
+            }
+            break;
+        case Funct3_CMP::F3_LESSTHAN:
+            if (getregisterS(instruction.getRS1())  <  getregisterS(instruction.getRS2()))
+            {
+                pc += instruction.getImm();
+            }
+            break;
+        case Funct3_CMP::F3_EQUALORMORE:
+            if (getregisterS(instruction.getRS1()) >=  getregisterS(instruction.getRS2()))
+            {
+                pc += instruction.getImm();
+            }
+            break;
+        case Funct3_CMP::F3_LESSTHAN_U:
+            if (getregisterU(instruction.getRS1())  <  getregisterU(instruction.getRS2()))
+            {
+                pc += instruction.getImm();
+            }
+        
+            break;
+        case Funct3_CMP::F3_EQUALORMORE_U:
+            if (getregisterU(instruction.getRS1())  >=  getregisterU(instruction.getRS2()))
+            {
+                pc += instruction.getImm();
+            }
+            
+        default:
+            break;
+        }
+    }
     inline void ENVTypesExecute(Instruction instruction)
     {
         switch (instruction.getImm())
@@ -268,7 +340,7 @@ public:
     }
     void Execute(Instruction instruction)
     {
-    
+        
         switch (instruction.getOpcode())
         {
         case OpcodeTypes::OP_REG:
@@ -277,6 +349,10 @@ public:
             break;
         case OpcodeTypes::OP_IMM:
             ITypesExecute(instruction);
+            break;
+        case OpcodeTypes::OP_BRNCH:
+            BTypesExecute()
+
             break;
         case OpcodeTypes::ENV:
             ENVTypesExecute(instruction);
