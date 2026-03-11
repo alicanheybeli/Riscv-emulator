@@ -42,22 +42,23 @@ enum class OpcodeTypes:uint8_t
 class Instruction
 {
 private:
-    uint8_t opcode;//opcode bits 0-6
-    uint8_t rd; //destination register, bits 7-11
-    uint8_t funct3; // used to distingiush instructions with the same opcode. 12-14
-    uint8_t rs1; //source register 1 15-19
-    uint8_t rs2; //source register 2 20-24
-    uint8_t funct7; // distinguishes R-type instructions 25-31
+    uint32_t opcode;//opcode bits 0-6
+    uint32_t rd; //destination register, bits 7-11
+    uint32_t funct3; // used to distingiush instructions with the same opcode. 12-14
+    uint32_t rs1; //source register 1 15-19
+    uint32_t rs2; //source register 2 20-24
+    uint32_t funct7; // distinguishes R-type instructions 25-31
     int32_t imm; //immediate value
 public:
     OpcodeTypes getOpcode() const { return static_cast<OpcodeTypes>(opcode); }
-    uint8_t getRd() const {return (rd);}
+    uint32_t getRd() const {return (rd);}
     Funct3_ALU getFunct3_ALU() const {return static_cast<Funct3_ALU>(funct3);}
     Funct3_CMP getFunct3_CMP() const {return static_cast<Funct3_CMP>(funct3);}
-    uint8_t getRS1()    const { return rs1; }
-    uint8_t getRS2() const {return rs2;}
-    uint8_t getFunct7() const {return funct7;}
-    int32_t getImm()    const { return imm; }
+    uint32_t getRS1()    const { return rs1; }
+    uint32_t getRS2() const {return rs2;}
+    uint32_t getFunct7() const {return funct7;}
+    int32_t getImmS()    const { return imm; }
+    uint32_t getImmU()    const { return cast::u32(imm);}
     Instruction(uint32_t instruction);
     ~Instruction();
     void PrintInstruction(void){
@@ -132,7 +133,7 @@ Instruction::Instruction(uint32_t inst)
         break;
     }
     case OpcodeTypes::OP_JMP:
-        {int32_t raw_imm = 0;
+        {uint32_t raw_imm = 0;
         raw_imm |= ((inst >> 31) & 0x1) << 20; // Bit 20
         raw_imm |= ((inst >> 12) & 0xFF) << 12; // Bits 19:12
         raw_imm |= ((inst >> 20) & 0x1) << 11;  // Bit 11
@@ -143,12 +144,12 @@ Instruction::Instruction(uint32_t inst)
         if (raw_imm & 0x100000) {
             raw_imm |= 0xFFE00000;
         }
-        imm = raw_imm;    
+        imm = cast::s32(raw_imm);   
     }
         break;
     case OpcodeTypes::OP_BRNCH:
     {
-        int32_t raw_imm = 0;
+        uint32_t raw_imm = 0;
         raw_imm |= ((inst >> 31) & 0x1) << 12; // Bit 12
         raw_imm |= ((inst >> 7)  & 0x1) << 11; // Bit 11
         raw_imm |= ((inst >> 25) & 0x3F) << 5; // Bits 10:5
@@ -158,7 +159,7 @@ Instruction::Instruction(uint32_t inst)
         if (raw_imm & 0x1000) {
             raw_imm |= 0xFFFFE000;
         }
-        imm = raw_imm;
+        imm = cast::s32(raw_imm);
         break;
     }
     /*case OpcodeTypes::ENV:
@@ -166,7 +167,7 @@ Instruction::Instruction(uint32_t inst)
         break;*/
     case OpcodeTypes::OP_UP:
         // U-type: Extract bits 31 to 12
-        int32_t imm = (inst & 0xFFFFF000);     
+        imm = cast::s32(inst & 0xFFFFF000);     
     break;
     default:
     {
@@ -182,12 +183,11 @@ class Processor
 {
 private:
     uint32_t pc = baseaddress;
-    uint32_t sp = 0;
     uint32_t registers[32];
     Memory* memory;
     bool is_running = true;
 public:
-    inline uint32_t getregisterU(uint8_t r)
+    inline uint32_t getregisterU(uint32_t r)
     {
         if (r == 0)
         {
@@ -195,11 +195,11 @@ public:
         }
         return registers[r];
     }
-    int32_t getregisterS(uint8_t r)
+    int32_t getregisterS(uint32_t r)
     {
         return cast::s32(getregisterU(r));
     }
-    void setregister(uint8_t r, uint32_t value)
+    void setregister(uint32_t r, uint32_t value)
     {
         registers[r] = value;
     }
@@ -231,21 +231,24 @@ public:
     }
     inline void RTypesExecute(Instruction instruction)
     {
+        auto rd = instruction.getRd();
+        auto rs1 = registers[instruction.getRS1()];
+        auto rs2 = registers[instruction.getRS2()];
         switch (instruction.getFunct3_ALU())
         {
         case Funct3_ALU::F3_ADD_SUB: //addi
         {
-            registers[instruction.getRd()] = registers[instruction.getRS1()] + registers[instruction.getRS2()];
+            registers[rd] = rs1 + rs2;
             break;
         }
         case Funct3_ALU::F3_AND:
         {
-            registers[instruction.getRd()] = registers[instruction.getRS1()] & registers[instruction.getRS2()];
+            registers[rd] = rs1 & rs2;
             break;
         }
         case Funct3_ALU::F3_OR:
         {
-            registers[instruction.getRd()] = registers[instruction.getRS1()] | registers[instruction.getRS2()];
+            registers[rd] = rs1 | rs2;
             break;
         }
         default:
@@ -254,81 +257,94 @@ public:
     }
     inline void ITypesExecute(Instruction instruction)
     {
+        auto rd = instruction.getRd();
+        auto rs1 = getregisterU(instruction.getRS1());
+
+        //auto rs2 = registers[instruction.getRS2()];
+        //auto imm_s = instruction.getImmS();
+        auto imm_u = instruction.getImmU();
         switch (instruction.getFunct3_ALU())
         {
         case Funct3_ALU::F3_ADD_SUB: //addi
         {
-            registers[instruction.getRd()] = cast::u32(cast::s32(registers[instruction.getRS1()]) + cast::s32(instruction.getImm()));
+            registers[rd] = rs1 + imm_u;
             break;
         }
         case Funct3_ALU::F3_AND:
         {
-            registers[instruction.getRd()] = registers[instruction.getRS1()] & instruction.getImm();
+            registers[rd] = rs1 & imm_u;
             break;
         }
         case Funct3_ALU::F3_OR:
         {
-            registers[instruction.getRd()] = registers[instruction.getRS1()] | instruction.getImm();
+            registers[rd] = rs1 | imm_u;
             break;
         }
         case Funct3_ALU::F3_SLL:
         {
-            registers[instruction.getRd()] = registers[instruction.getRS1()] << extractbits(5,0,instruction.getImm());
+            registers[rd] = rs1 << extractbits(5,0,cast::u32(imm_u));
             break;
         }
         default:
             break;
         }
     }
-    inline void BTypesExecute(Instruction instruction)
-    {
+    inline uint32_t BTypesExecute(Instruction instruction)
+    {   
+
+        //auto rd = instruction.getRd();
+        auto rs1 = getregisterU(instruction.getRS1());
+        auto rs2 = getregisterU(instruction.getRS2());
+        //auto imm_s = instruction.getImmS();
+        auto imm_u = instruction.getImmU();
         switch (instruction.getFunct3_CMP())
         {
         case Funct3_CMP::F3_EQUAL:
-            if (getregisterS(instruction.getRS1()) == getregisterS(instruction.getRS2()))
+            if (rs1 == rs2)
             {
-                pc += instruction.getImm();
+                return pc + imm_u;
             }
             
             break;
         case Funct3_CMP::F3_NOTEQUAL:
-            if (getregisterS(instruction.getRS1())  !=  getregisterS(instruction.getRS2()))
+            if (rs1  !=  rs2)
             {
-                pc += instruction.getImm();
+                return pc + imm_u;
             }
             break;
         case Funct3_CMP::F3_LESSTHAN:
-            if (getregisterS(instruction.getRS1())  <  getregisterS(instruction.getRS2()))
+            if (cast::s32(rs1)  <  cast::s32(rs2))
             {
-                pc += instruction.getImm();
+                return pc + imm_u;
             }
             break;
         case Funct3_CMP::F3_EQUALORMORE:
-            if (getregisterS(instruction.getRS1()) >=  getregisterS(instruction.getRS2()))
+            if (cast::s32(rs1) >=  cast::s32(rs2))
             {
-                pc += instruction.getImm();
+                return pc + imm_u;
             }
             break;
         case Funct3_CMP::F3_LESSTHAN_U:
-            if (getregisterU(instruction.getRS1())  <  getregisterU(instruction.getRS2()))
+            if (rs1  <  rs2)
             {
-                pc += instruction.getImm();
+                return pc + imm_u;
             }
         
             break;
         case Funct3_CMP::F3_EQUALORMORE_U:
-            if (getregisterU(instruction.getRS1())  >=  getregisterU(instruction.getRS2()))
+            if (rs1  >=  rs2)
             {
-                pc += instruction.getImm();
+                return pc + imm_u;
             }
             
         default:
             break;
         }
+        return pc + 4;
     }
     inline void ENVTypesExecute(Instruction instruction)
     {
-        switch (instruction.getImm())
+        switch (instruction.getImmS())
         {
         case 1U: //ebreak
             /* code */
@@ -340,7 +356,8 @@ public:
     }
     void Execute(Instruction instruction)
     {
-        
+        auto nextpc = pc +4;
+
         switch (instruction.getOpcode())
         {
         case OpcodeTypes::OP_REG:
@@ -351,7 +368,7 @@ public:
             ITypesExecute(instruction);
             break;
         case OpcodeTypes::OP_BRNCH:
-            BTypesExecute()
+            nextpc = BTypesExecute(instruction);
 
             break;
         case OpcodeTypes::ENV:
@@ -360,10 +377,9 @@ public:
         default:
             break;
         }
-        if (true/* not branch/jump add later */)
-        {
-            pc += 4;
-        }
+
+        pc = nextpc;
+
         
         
     }
