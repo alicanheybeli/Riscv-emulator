@@ -142,10 +142,10 @@
     class Processor
     {
     private:
-        uint32_t pc = 0;
+        uint32_t pc = baseaddress;
         uint32_t sp = 0;
         uint32_t registers[32];
-        Memory memory;
+        Memory* memory;
         bool is_running = true;
     public:
 
@@ -159,7 +159,7 @@
         }
         Processor(/* args */);
         ~Processor();
-        void run(Memory program){
+        void run(Memory* program){
             memory = program;
             while (is_running)
             {
@@ -168,7 +168,7 @@
         }
         void Step()
         {
-            uint32_t fetchedinstruction = memory.read32(pc);
+            uint32_t fetchedinstruction = memory->read32(pc);
             Instruction decodedinstruction = Instruction(fetchedinstruction);
             Execute(decodedinstruction);
             std::cin.get();
@@ -178,7 +178,16 @@
         }
         inline void RTypesExecute( [[maybe_unused]]Instruction instruction)
         {
-
+            switch (instruction.getFunct3())
+            {
+            case Funct3_ALU::F3_ADD_SUB: //addi
+            {
+                registers[instruction.getRd()] = registers[instruction.getRS1()] + registers[instruction.getRS2()];
+                break;
+            }
+            default:
+                break;
+            }
         }
         inline void ITypesExecute(Instruction instruction)
         {
@@ -186,7 +195,7 @@
             {
             case Funct3_ALU::F3_ADD_SUB: //addi
             {
-                registers[instruction.getRd()] = registers[instruction.getRS1()] + cast::u32(instruction.getImm());
+                registers[instruction.getRd()] = cast::u32(cast::s32(registers[instruction.getRS1()]) + cast::s32(instruction.getImm()));
                 break;
             }
             default:

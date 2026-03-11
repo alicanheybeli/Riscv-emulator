@@ -2,8 +2,10 @@
 #include <iostream>
 #include <cstring>
 #include "bitmasking.hpp"
+#include "casting.hpp"
 #pragma once 
-constexpr uint32_t ramsize = 1024*4;
+constexpr size_t ramsize = 1024*1024;
+constexpr uint32_t baseaddress = 0x80000000;
 class Memory
 {
 private:

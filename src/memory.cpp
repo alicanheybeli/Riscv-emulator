@@ -9,25 +9,20 @@ void Memory::LoadProgram(const uint8_t* binary, size_t size) {
         std::memcpy(RAM, binary, size);
     }
 uint32_t Memory::read32(uint32_t address){
-    if (address > ramsize)
-    {
-        std::cout << "attempted to reach to adress outside range:" << address;
-        return 0;
-    }
-    return static_cast<uint32_t>(read8(address))  | 
-     (static_cast<uint32_t>(read8(address+1))<< 8)  |
-     (static_cast<uint32_t>(read8(address+2))<< 16) |
-     (static_cast<uint32_t>(read8(address+3))<< 24);
+    return cast::u32(read8(address))    | 
+     (cast::u32(read8(address+1))<< 8)  |
+     (cast::u32(read8(address+2))<< 16) |
+     (cast::u32(read8(address+3))<< 24);
 }
 uint8_t Memory::read8(uint32_t address)
 {
-    if (address > ramsize)
+    if (address < baseaddress || address >= ramsize + baseaddress)
     {
         std::cout << "attempted to reach to adress outside range:" << address;
         return 0;
     }
     
-    return RAM[address];
+    return RAM[address - baseaddress];
 };
 void Memory::write32(uint32_t address,uint32_t value)
 {
@@ -35,10 +30,10 @@ void Memory::write32(uint32_t address,uint32_t value)
     {
         std::cout << "attempted to reach to adress outside range:" << address;
     }
-    write8(address, static_cast<uint8_t>(extractbits(8,0,value)));
-    write8(address+1, static_cast<uint8_t>(extractbits(8,8,value)));
-    write8(address+2,  static_cast<uint8_t>(extractbits(8,16,value)));
-    write8(address+3,  static_cast<uint8_t>(extractbits(8,24,value)));
+    write8(address,    cast::u8(extractbits(8,0,value)));
+    write8(address+1,  cast::u8(extractbits(8,8,value)));
+    write8(address+2,  cast::u8(extractbits(8,16,value)));
+    write8(address+3,  cast::u8(extractbits(8,24,value)));
 };
 void Memory::write8(uint32_t address,uint8_t value)
 {
