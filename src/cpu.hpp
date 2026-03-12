@@ -12,21 +12,27 @@ const uint32_t test_program[] = {
     0x00000073  // EBREAK
 };
 enum Funct3_ALU {
-    F3_ADD_SUB = 0x0,
-    F3_SLL     = 0x1,
-    F3_SLT     = 0x2,
-    F3_OR      = 0x6,
-    F3_XOR     = 0x4,
-    F3_AND     = 0x7
+    ADD_SUB = 0x0,
+    SLL     = 0x1,
+    SLT     = 0x2,
+    OR      = 0x6,
+    XOR     = 0x4,
+    AND     = 0x7
+};
+enum Funct3_STR {
+    BYTE = 0x0,
+    HALF = 0x1,
+    WORD = 0x2
+
 };
 enum Funct3_CMP
 {
-    F3_EQUAL = 0x0,
-    F3_NOTEQUAL = 0x1,
-    F3_LESSTHAN = 0x4,
-    F3_EQUALORMORE = 0x5,
-    F3_LESSTHAN_U = 0x6, //U funct3's zero extend.
-    F3_EQUALORMORE_U = 0x7,
+    EQUAL = 0x0,
+    NOTEQUAL = 0x1,
+    LESSTHAN = 0x4,
+    EQUALORMORE = 0x5,
+    LESSTHAN_U = 0x6, //U funct3's zero extend.
+    EQUALORMORE_U = 0x7,
 };
 enum class OpcodeTypes:uint8_t
 {
@@ -34,10 +40,13 @@ enum class OpcodeTypes:uint8_t
     OP_IMM = 0x13, //0010011 Immideate instructions
     ENV = 0x73, //1110011 enviroment instructions
     OP_BRNCH = 0x63,
-    OP_JMP = 0x6F,
+    OP_JMPI = 0x6F,
+    OP_JMPR = 0x68,
     OP_LD =0x03, 
     OP_STR = 0x23,
-    OP_UP = 0x37    
+    OP_UP = 0x37,
+    OP_UP2= 0x17
+    
 };
 class Instruction
 {
@@ -54,6 +63,7 @@ public:
     uint32_t getRd() const {return (rd);}
     Funct3_ALU getFunct3_ALU() const {return static_cast<Funct3_ALU>(funct3);}
     Funct3_CMP getFunct3_CMP() const {return static_cast<Funct3_CMP>(funct3);}
+    Funct3_STR getFunct3_STR() const {return static_cast<Funct3_STR>(funct3);}
     uint32_t getRS1()    const { return rs1; }
     uint32_t getRS2() const {return rs2;}
     uint32_t getFunct7() const {return funct7;}
@@ -109,6 +119,7 @@ Instruction::Instruction(uint32_t inst)
         break;
     }
     case OpcodeTypes::ENV:
+    case OpcodeTypes::OP_JMPI:
     case OpcodeTypes::OP_IMM: // I types
     case OpcodeTypes::OP_LD: // Load instructions. we can get away with using the same decode here. the top 20 bits become the imm field.
     {
@@ -132,7 +143,8 @@ Instruction::Instruction(uint32_t inst)
         imm = cast::s32(full_imm);  
         break;
     }
-    case OpcodeTypes::OP_JMP:
+
+    case OpcodeTypes::OP_JMPR:
         {uint32_t raw_imm = 0;
         raw_imm |= ((inst >> 31) & 0x1) << 20; // Bit 20
         raw_imm |= ((inst >> 12) & 0xFF) << 12; // Bits 19:12
@@ -166,6 +178,7 @@ Instruction::Instruction(uint32_t inst)
         imm = (cast::s32(inst >> 20));
         break;*/
     case OpcodeTypes::OP_UP:
+    case OpcodeTypes::OP_UP2:
         // U-type: Extract bits 31 to 12
         imm = cast::s32(inst & 0xFFFFF000);     
     break;
@@ -204,7 +217,7 @@ public:
         registers[r] = value;
     }
     void PrintState(){
-        std::cout << " | pc: " << pc << " | sp: " << sp;
+        std::cout << " | pc: " << pc;
         /*for (size_t i = 0; i <= 31; i++)
         {
             std::cout << "r" << i << ":" << std::hex << registers[i];
@@ -236,21 +249,37 @@ public:
         auto rs2 = registers[instruction.getRS2()];
         switch (instruction.getFunct3_ALU())
         {
-        case Funct3_ALU::F3_ADD_SUB: //addi
+        case Funct3_ALU::ADD_SUB: //addi
         {
-            registers[rd] = rs1 + rs2;
+            switch (instruction.getFunct7())
+            {
+            case 0x00:
+                registers[rd] = rs1 + rs2;
+                break;
+            
+            case 0x20:
+                registers[rd] = rs1 - rs2;
+                break;
+            
+            default:
+                break;
+            }
+            
             break;
         }
-        case Funct3_ALU::F3_AND:
+        case Funct3_ALU::AND:
         {
             registers[rd] = rs1 & rs2;
             break;
         }
-        case Funct3_ALU::F3_OR:
+        case Funct3_ALU::OR:
         {
             registers[rd] = rs1 | rs2;
             break;
         }
+        case Funct3_ALU::XOR:
+            registers[rd] = rs1 ^ rs2;
+            break;
         default:
             break;
         }
@@ -265,22 +294,25 @@ public:
         auto imm_u = instruction.getImmU();
         switch (instruction.getFunct3_ALU())
         {
-        case Funct3_ALU::F3_ADD_SUB: //addi
+        case Funct3_ALU::ADD_SUB: //addi
         {
             registers[rd] = rs1 + imm_u;
             break;
         }
-        case Funct3_ALU::F3_AND:
+        case Funct3_ALU::AND:
         {
             registers[rd] = rs1 & imm_u;
             break;
         }
-        case Funct3_ALU::F3_OR:
+        case Funct3_ALU::OR:
         {
             registers[rd] = rs1 | imm_u;
             break;
         }
-        case Funct3_ALU::F3_SLL:
+        case Funct3_ALU::XOR:
+            registers[rd] = rs1 ^ imm_u;
+            break;
+        case Funct3_ALU::SLL:
         {
             registers[rd] = rs1 << extractbits(5,0,cast::u32(imm_u));
             break;
@@ -299,39 +331,39 @@ public:
         auto imm_u = instruction.getImmU();
         switch (instruction.getFunct3_CMP())
         {
-        case Funct3_CMP::F3_EQUAL:
+        case Funct3_CMP::EQUAL:
             if (rs1 == rs2)
             {
                 return pc + imm_u;
             }
             
             break;
-        case Funct3_CMP::F3_NOTEQUAL:
+        case Funct3_CMP::NOTEQUAL:
             if (rs1  !=  rs2)
             {
                 return pc + imm_u;
             }
             break;
-        case Funct3_CMP::F3_LESSTHAN:
+        case Funct3_CMP::LESSTHAN:
             if (cast::s32(rs1)  <  cast::s32(rs2))
             {
                 return pc + imm_u;
             }
             break;
-        case Funct3_CMP::F3_EQUALORMORE:
+        case Funct3_CMP::EQUALORMORE:
             if (cast::s32(rs1) >=  cast::s32(rs2))
             {
                 return pc + imm_u;
             }
             break;
-        case Funct3_CMP::F3_LESSTHAN_U:
+        case Funct3_CMP::LESSTHAN_U:
             if (rs1  <  rs2)
             {
                 return pc + imm_u;
             }
         
             break;
-        case Funct3_CMP::F3_EQUALORMORE_U:
+        case Funct3_CMP::EQUALORMORE_U:
             if (rs1  >=  rs2)
             {
                 return pc + imm_u;
@@ -341,6 +373,30 @@ public:
             break;
         }
         return pc + 4;
+    }
+    inline void STypesExecute(Instruction instruction)
+    {
+        
+        //auto rd = instruction.getRd();
+        auto rs1 = getregisterU(instruction.getRS1());
+        auto rs2 = getregisterU(instruction.getRS2());
+        //auto imm_s = instruction.getImmS();
+        auto imm_u = instruction.getImmU();
+        switch (instruction.getFunct3_STR())
+        {
+        case Funct3_STR::BYTE: 
+            memory->write8(rs1+imm_u, cast::u8(extractbits(8,0,rs2)));
+            break;
+        case Funct3_STR::HALF: 
+            memory->write16(rs1+imm_u, cast::u16(extractbits(16,0,rs2)));
+            break;
+        case Funct3_STR::WORD: 
+            memory->write32(rs1+imm_u, cast::u32(rs2));
+            break;
+        
+        default:
+            break;
+        }
     }
     inline void ENVTypesExecute(Instruction instruction)
     {
@@ -354,6 +410,26 @@ public:
             break;
         }
     }
+    inline uint32_t JTypesExecute(Instruction instruction)
+    {
+        auto rd = instruction.getRd();
+        auto rs1 = getregisterU(instruction.getRS1());
+        auto imm_u = instruction.getImmU();
+        switch (instruction.getOpcode())
+        {
+        case OpcodeTypes::OP_JMPI: 
+            registers[rd] = pc+4;
+            return (pc + imm_u);
+            break;
+        case OpcodeTypes::OP_JMPR:
+            registers[rd] = pc+4;
+            return (pc + imm_u + rs1);
+            break;
+        default:
+            break;
+        }
+        return pc+4;
+    }
     void Execute(Instruction instruction)
     {
         auto nextpc = pc +4;
@@ -362,18 +438,24 @@ public:
         {
         case OpcodeTypes::OP_REG:
             RTypesExecute(instruction);
-            
             break;
         case OpcodeTypes::OP_IMM:
             ITypesExecute(instruction);
             break;
         case OpcodeTypes::OP_BRNCH:
             nextpc = BTypesExecute(instruction);
-
+            break;
+        case OpcodeTypes::OP_JMPI:
+        case OpcodeTypes::OP_JMPR:
+            nextpc = JTypesExecute(instruction);
+            break;
+        case OpcodeTypes::OP_STR:
+            STypesExecute(instruction);
             break;
         case OpcodeTypes::ENV:
             ENVTypesExecute(instruction);
             break;
+
         default:
             break;
         }

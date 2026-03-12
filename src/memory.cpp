@@ -14,6 +14,10 @@ uint32_t Memory::read32(uint32_t address){
      (cast::u32(read8(address+2))<< 16) |
      (cast::u32(read8(address+3))<< 24);
 }
+uint16_t Memory::read16(uint32_t address){
+    return cast::u16(read8(address))    | 
+     (cast::u16(read8(address+1))<< 8)  ;
+}
 uint8_t Memory::read8(uint32_t address)
 {
     if (address < baseaddress || address >= ramsize + baseaddress)
@@ -24,12 +28,14 @@ uint8_t Memory::read8(uint32_t address)
     
     return RAM[address - baseaddress];
 };
+void Memory::write16(uint32_t address,uint32_t value)
+{
+    write8(address,    cast::u8(extractbits(8,0,value)));
+    write8(address+1,  cast::u8(extractbits(8,8,value)));
+
+};
 void Memory::write32(uint32_t address,uint32_t value)
 {
-    if (address > ramsize)
-    {
-        std::cout << "attempted to reach to adress outside range:" << address;
-    }
     write8(address,    cast::u8(extractbits(8,0,value)));
     write8(address+1,  cast::u8(extractbits(8,8,value)));
     write8(address+2,  cast::u8(extractbits(8,16,value)));
