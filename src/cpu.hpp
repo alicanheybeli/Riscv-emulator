@@ -15,15 +15,18 @@ enum Funct3_ALU {
     ADD_SUB = 0x0,
     SLL     = 0x1,
     SLT     = 0x2,
+    SLT_U   = 0x3,
     OR      = 0x6,
     XOR     = 0x4,
+    SRL     = 0x5,
     AND     = 0x7
 };
-enum Funct3_STR {
+enum Funct3_STR_LD {
     BYTE = 0x0,
     HALF = 0x1,
-    WORD = 0x2
-
+    WORD = 0x2,
+    BYTE_U = 0x4,//zero-extends
+    HALF_U = 0x5//zero-extends
 };
 enum Funct3_CMP
 {
@@ -40,8 +43,8 @@ enum class OpcodeTypes:uint8_t
     OP_IMM = 0x13, //0010011 Immideate instructions
     ENV = 0x73, //1110011 enviroment instructions
     OP_BRNCH = 0x63,
-    OP_JMPI = 0x6F,
-    OP_JMPR = 0x68,
+    OP_JMP_I = 0x6F,
+    OP_JMP = 0x67,
     OP_LD =0x03, 
     OP_STR = 0x23,
     OP_UP = 0x37,
@@ -63,7 +66,7 @@ public:
     uint32_t getRd() const {return (rd);}
     Funct3_ALU getFunct3_ALU() const {return static_cast<Funct3_ALU>(funct3);}
     Funct3_CMP getFunct3_CMP() const {return static_cast<Funct3_CMP>(funct3);}
-    Funct3_STR getFunct3_STR() const {return static_cast<Funct3_STR>(funct3);}
+    Funct3_STR_LD getFunct3_STR_LD() const {return static_cast<Funct3_STR_LD>(funct3);}
     uint32_t getRS1()    const { return rs1; }
     uint32_t getRS2() const {return rs2;}
     uint32_t getFunct7() const {return funct7;}
@@ -119,7 +122,7 @@ Instruction::Instruction(uint32_t inst)
         break;
     }
     case OpcodeTypes::ENV:
-    case OpcodeTypes::OP_JMPI:
+    case OpcodeTypes::OP_JMP_I:
     case OpcodeTypes::OP_IMM: // I types
     case OpcodeTypes::OP_LD: // Load instructions. we can get away with using the same decode here. the top 20 bits become the imm field.
     {
@@ -144,7 +147,7 @@ Instruction::Instruction(uint32_t inst)
         break;
     }
 
-    case OpcodeTypes::OP_JMPR:
+    case OpcodeTypes::OP_JMP:
         {uint32_t raw_imm = 0;
         raw_imm |= ((inst >> 31) & 0x1) << 20; // Bit 20
         raw_imm |= ((inst >> 12) & 0xFF) << 12; // Bits 19:12
@@ -214,6 +217,11 @@ public:
     }
     void setregister(uint32_t r, uint32_t value)
     {
+        if (r == 0)
+        {
+            return;
+        }
+        
         registers[r] = value;
     }
     void PrintState(){
@@ -382,15 +390,15 @@ public:
         auto rs2 = getregisterU(instruction.getRS2());
         //auto imm_s = instruction.getImmS();
         auto imm_u = instruction.getImmU();
-        switch (instruction.getFunct3_STR())
+        switch (instruction.getFunct3_STR_LD())
         {
-        case Funct3_STR::BYTE: 
+        case Funct3_STR_LD::BYTE: 
             memory->write8(rs1+imm_u, cast::u8(extractbits(8,0,rs2)));
             break;
-        case Funct3_STR::HALF: 
+        case Funct3_STR_LD::HALF: 
             memory->write16(rs1+imm_u, cast::u16(extractbits(16,0,rs2)));
             break;
-        case Funct3_STR::WORD: 
+        case Funct3_STR_LD::WORD: 
             memory->write32(rs1+imm_u, cast::u32(rs2));
             break;
         
@@ -412,16 +420,17 @@ public:
     }
     inline uint32_t JTypesExecute(Instruction instruction)
     {
+        
         auto rd = instruction.getRd();
         auto rs1 = getregisterU(instruction.getRS1());
         auto imm_u = instruction.getImmU();
         switch (instruction.getOpcode())
         {
-        case OpcodeTypes::OP_JMPI: 
+        case OpcodeTypes::OP_JMP_I: 
             registers[rd] = pc+4;
             return (pc + imm_u);
             break;
-        case OpcodeTypes::OP_JMPR:
+        case OpcodeTypes::OP_JMP:
             registers[rd] = pc+4;
             return (pc + imm_u + rs1);
             break;
@@ -429,6 +438,43 @@ public:
             break;
         }
         return pc+4;
+    }    
+    inline void LTypesExecute(Instruction instruction)
+    {
+        auto rd = instruction.getRd();
+        auto rs1 = getregisterU(instruction.getRS1());
+        auto imm_u = instruction.getImmU();
+        switch (instruction.getFunct3_STR_LD())
+        {
+        case Funct3_STR_LD::BYTE: 
+            setregister(rd,
+            cast::signextend(memory->read8(rs1 + imm_u))
+            );
+            break;
+        case Funct3_STR_LD::HALF: 
+            setregister(rd,
+            cast::signextend(memory->read16(rs1 + imm_u))
+            );
+            break;
+        case Funct3_STR_LD::WORD: 
+            setregister(rd,
+            cast::signextend(memory->read32(rs1 + imm_u))
+            );
+            break;
+        case Funct3_STR_LD::BYTE_U: 
+            setregister(rd,
+            cast::zeroextend(memory->read8(rs1 + imm_u))
+            );
+            break;
+        case Funct3_STR_LD::HALF_U: 
+            setregister(rd,
+            cast::zeroextend(memory->read16(rs1 + imm_u))
+            );
+            break;
+        default:
+            break;
+        }
+
     }
     void Execute(Instruction instruction)
     {
@@ -436,6 +482,9 @@ public:
 
         switch (instruction.getOpcode())
         {
+        case OpcodeTypes::OP_LD:
+            LTypesExecute(instruction);
+            break;
         case OpcodeTypes::OP_REG:
             RTypesExecute(instruction);
             break;
@@ -445,8 +494,8 @@ public:
         case OpcodeTypes::OP_BRNCH:
             nextpc = BTypesExecute(instruction);
             break;
-        case OpcodeTypes::OP_JMPI:
-        case OpcodeTypes::OP_JMPR:
+        case OpcodeTypes::OP_JMP_I:
+        case OpcodeTypes::OP_JMP:
             nextpc = JTypesExecute(instruction);
             break;
         case OpcodeTypes::OP_STR:
