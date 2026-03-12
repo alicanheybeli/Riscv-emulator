@@ -20,10 +20,7 @@ namespace cast {
     {
         return cast::u32(val) & 0xFF;
     }
-    constexpr uint32_t signextend(uint32_t val)
-    {
-        return val;
-    }
+
     constexpr uint32_t signextend(uint16_t val)
     {
         return cast::u32(cast::s32(cast::s16(val)));

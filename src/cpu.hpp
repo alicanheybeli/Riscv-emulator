@@ -43,8 +43,8 @@ enum class OpcodeTypes:uint8_t
     OP_IMM = 0x13, //0010011 Immideate instructions
     ENV = 0x73, //1110011 enviroment instructions
     OP_BRNCH = 0x63,
-    OP_JMP_I = 0x6F,
-    OP_JMP = 0x67,
+    OP_JMP_I = 0x67,
+    OP_JMP = 0x6F,
     OP_LD =0x03, 
     OP_STR = 0x23,
     OP_UP = 0x37,
@@ -413,6 +413,9 @@ public:
         case 1U: //ebreak
             /* code */
             break;
+        case 0U: //ecall
+            /* code */
+            break;
         
         default:
             break;
@@ -432,7 +435,7 @@ public:
             break;
         case OpcodeTypes::OP_JMP:
             registers[rd] = pc+4;
-            return (pc + imm_u + rs1);
+            return (imm_u + rs1) & ~1U;
             break;
         default:
             break;
@@ -458,7 +461,7 @@ public:
             break;
         case Funct3_STR_LD::WORD: 
             setregister(rd,
-            cast::signextend(memory->read32(rs1 + imm_u))
+            memory->read32(rs1 + imm_u)
             );
             break;
         case Funct3_STR_LD::BYTE_U: 
