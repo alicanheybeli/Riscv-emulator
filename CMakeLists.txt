@@ -31,7 +31,7 @@ include_directories(include)
 
 set(SOURCES
     src/main.cpp
-    
+    src/cpu.cpp
     src/memory.cpp
 
 )
