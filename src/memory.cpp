@@ -43,7 +43,7 @@ void Memory::write32(uint32_t address,uint32_t value)
 };
 void Memory::write8(uint32_t address,uint8_t value)
 {
-    if (address > ramsize)
+    if (address < baseaddress || address >= ramsize + baseaddress)
     {
         std::cout << "attempted to reach to adress outside range:" << address;
     }
